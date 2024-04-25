@@ -1,0 +1,114 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: gcp-static-website
+  title: GCP Static Website Template
+  description: An example template for the scaffolder that creates a simple static website with Cloud Storage, Cloud Build.
+  tags:
+    - infrastructure
+    - terraform
+    - gcp
+    - cloud-storage
+    - github
+    - cloud-build
+
+spec:
+  owner: user:guest
+  type: service
+  parameters:
+    - title: Fill in some steps
+      required:
+        - name
+        - env
+      properties:
+        name:
+          title: Bucket
+          type: string
+          description: The name of the GCS bucket
+        env:
+          title: Environment
+          type: string
+          description: The environment to deploy the resources
+          default: dev
+          enum: [dev, staging, prod]
+    - title: Choose a location
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          title: Repository Location
+          type: string
+          ui:field: RepoUrlPicker
+          ui:options:
+            allowedHosts:
+              - github.com
+
+  steps:
+    - id: fetch-content
+      name: Fetch Content
+      action: fetch:template
+      input:
+        targetPath: ./outputs/content
+        url: ./content
+        values:
+          name: ${{ parameters.name }}
+          env: ${{ parameters.env }}
+          repoUrl: ${{ parameters.repoUrl }}
+
+    - id: show-content-workspace
+      name: Show content workspace files
+      action: debug:log
+      input:
+        listWorkspace: true
+
+    - id: fetch-devops
+      name: Fetch Devops
+      action: fetch:template
+      input:
+        targetPath: ./outputs/devops
+        url: ./devops
+        values:
+          name: ${{ parameters.name }}
+          env: ${{ parameters.env }}
+          repoUrl: ${{ parameters.repoUrl }}
+
+    - id: show-devops-workspace
+      name: Show devops workspace files
+      action: debug:log
+      input:
+        listWorkspace: true
+
+    - id: publish
+      name: Publish
+      action: publish:github
+      input:
+        defaultBranch: main
+        sourcePath: ./outputs/content
+        allowedHosts: ['github.com']
+        description: This is ${{ parameters.name }}
+        repoUrl: ${{ parameters.repoUrl }}
+
+    - id: publish-devops
+      name: Create a pull request
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?repo=backstage-devops&owner=victoronl
+        branchName: 'terraform/${{ parameters.name }}'
+        title: Create ${{ parameters.name }} static website
+        description: This is a pull request to create a new static website
+        sourcePath: ./outputs/devops
+
+    - id: register
+      name: Register
+      action: catalog:register
+      input:
+        repoContentsUrl: ${{ steps['publish'].output.repoContentsUrl }}
+        catalogInfoPath: '/catalog-info.yaml'
+
+  output:
+    links:
+      - title: Repository
+        url: ${{ steps['publish'].output.remoteUrl }}
+      - title: Open in catalog
+        icon: catalog
+        entityRef: ${{ steps['register'].output.entityRef }}
